@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title></title>
+<meta charset="utf-8">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+  <link rel="stylesheet" type="text/css" href="https://ajax.googleapis.com/ajax/libs/angular_material/1.0.0/angular-material.min.css">
+  <link rel="stylesheet" type="text/css" media="all" href="css/daterangepicker.css" />
+<style>
+
+    .links line {
+      stroke: black;
+      stroke-opacity: 0.6;
+    }
+
+    .nodes circle {
+      stroke: #fff;
+      stroke-width: 1.5px;
+    }
+
+    .row {
+      padding: 20px;
+    }
+
+    .btn.zoom {
+      font-size: 20px;
+      width: 60px;
+    }
+    .btn.zoom.in {
+      border-bottom-right-radius: 0;
+      border-top-right-radius: 0;
+    }
+    .btn.zoom.out {
+      border-bottom-left-radius: 0;
+      border-top-left-radius: 0;
+    }
+    .input-group
+    {
+      margin: 20px 0;
+    }
+    .col-md-2
+    {
+      padding: 20px;
+      border: solid 1px #ccc;
+      border-radius: 10px;
+    }
+    .panel {
+      padding: 20px;
+      opacity: 0.9;
+    }
+    md-slider.md-default-theme .md-track.md-track-fill, md-slider .md-track.md-track-fill {
+      background-color: darkgreen;
+    }
+    md-slider.md-default-theme .md-thumb:after, md-slider .md-thumb:after {
+      background-color: darkgreen;
+      border-color: darkgreen;
+    }
+    md-slider.md-default-theme .md-focus-ring, md-slider .md-focus-ring {
+      background-color: darkgreen;
+    }
+    h3 span {
+      color: #c00;
+      font-weight: bold;
+    }
+    md-input-container {
+      display: none;
+    }
+    #arrow {
+      fill: black;
+    }
+    line {
+      opacity: 0.3;
+    }      
+</style>
+<script type="text/javascript" src="data/graph_v4.js"></script>
+</head>
+<body ng-app="firstApplication">
+  <div class="row" ng-controller="sliderController as ctrl">
+    <div class="col-md-9 graph">
+    </div>
+    <div class="col-md-3">
+        <div class="panel panel-default">
+            <div id="gui" class="text-center">
+              <button class="btn btn-primary zoom in">+</button>
+              <button class="btn btn-default zoom out">-</button>
+            </div>
+            <div class="input-group">
+              <input type="text" class="form-control" placeholder="Search">
+              <div class="input-group-btn">
+                <button class="btn btn-default" type="submit">
+                  <i class="glyphicon glyphicon-search"></i>
+                </button>
+              </div>
+            </div>
+            <div class="form-group">
+              <select class="form-control" id="sel" ng-model="selectedName" ng-change="dropdownChange()">
+                <option value="{{x.id}}" ng-repeat="x in pName" ng-selected="x.id===selectedName">{{x.id}}</option>
+              </select>
+            </div>
+            <h3 class="text-center">Report As of Last <span>{{day}}</span> Days</h3>
+            <md-slider-container>
+              <md-slider flex min="1" max="{{nodes.length}}" ng-model="day" aria-label="day" id="day-slider" class="m-l-0" ng-change="sliderChange()"></md-slider>
+              <md-input-container>
+                <input type="number" flex ng-model="day" aria-label="day" aria-controls="day-slider">
+              </md-input-container>
+            </md-slider-container>
+            <div class="form-group">
+                <label for="startDate">Start Date</label>
+                <input type="text" class="form-control" id="startDate" value="07/01/2015">
+            </div>
+            <div class="form-group">
+                <label for="endDate">End Date</label>
+                <input type="text" class="form-control" id="endDate" value="07/15/2015">
+            </div>
+            <button class="btn btn-primary btn-block">Button1</button>
+            <button class="btn btn-primary btn-block">Button2</button>        
+        </div>
+    </div>
+  </div>
+
+  <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.4.8/angular.min.js"></script>
+  <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.4.8/angular-animate.min.js"></script>
+  <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.4.8/angular-aria.min.js"></script>
+  <script src="https://ajax.googleapis.com/ajax/libs/angular_material/1.0.0/angular-material.min.js"></script>
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
+  <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+  <script src="js/moment.js"></script>
+  <script src="js/daterangepicker.js"></script>
+  <script src="https://d3js.org/d3.v4.min.js"></script>
+  <script type="text/javascript">
+    //define Angular Module
+    angular.module('firstApplication', ['ngMaterial'])
+      .controller('sliderController', sliderController);
+
+    //define controller
+    function sliderController($scope, $mdSidenav) {
+      $scope.day =  1;             //slider variable
+      $scope.pName = [];           //dropdown variable
+      $scope.linkCounts = [];      //number of link per each node
+      $scope.nodes = [];
+      $scope.links = [];
+      $scope.selectedName = "All";    //selected id when select dropdown
+      $scope.graph = {};
+      $scope.animTime = 0;      //hide and show animation time
+      $scope.r = 0;
+      $scope.fadeOpacity = 0.05;     //opacity value when mouseover
+      $scope.brushOpacity = 0.2;
+      $scope.enableBrush = false;
+
+      var width = $(window).width(),
+          height = $(window).height();
+
+      var color = d3.scaleOrdinal(d3.schemeCategory20);
+      var simulation = d3.forceSimulation()
+          .force("link", d3.forceLink()
+            .id(function(d) { return d.id; }))
+            // .distance(50)
+            // .strength(0))
+          //.force("charge", d3.forceManyBody().strength(-20).distanceMax(500))
+          .force("charge", d3.forceManyBody())
+          .force("center", d3.forceCenter(width / 2, height / 2));
+
+      //get data from json and call drawfunction            
+      d3.json("data/BankData_v2.json", function(error, data){
+      // d3.json("json_server.json", function(error, data){
+        $scope.graph = getGraphData(data);
+        drawGraph($scope.graph);
+        console.log($scope.nodes);
+      });
+
+      //popup datepicker      
+      $('#startDate').daterangepicker({
+          singleDatePicker: true,
+          startDate: moment().subtract(6, 'days')
+      });
+      $('#endDate').daterangepicker({
+          singleDatePicker: true,
+          startDate: moment()
+      });
+
+      //dropdown change function
+      $scope.dropdownChange = function(){
+        if ($scope.selectedName == "All") {
+          $("circle").show($scope.animTime);
+          $("line").show($scope.animTime);
+          $("text").show($scope.animTime);
+          return;
+        }
+        $("circle").hide($scope.animTime);
+        $("line").hide($scope.animTime);
+        $("text").hide($scope.animTime);
+        $("circle."+$scope.selectedName).show($scope.animTime);
+        $("text."+$scope.selectedName).show($scope.animTime);
+        $("line."+$scope.selectedName).each(function (index) {
+          if ($(this).attr("class").split(" ")[0] == $scope.selectedName) {
+            $("line."+$(this).attr("class").split(" ")[0]+"."+$(this).attr("class").split(" ")[1]).show($scope.animTime);
+            $("text."+$(this).attr("class").split(" ")[1]).show($scope.animTime);
+            $("circle."+$(this).attr("class").split(" ")[1]).show($scope.animTime);
+          }
+        });
+      }
+
+      //slider change function
+      $scope.sliderChange = function(){
+        $("circle").hide($scope.animTime);
+        $("line").hide($scope.animTime);
+        $("text").hide($scope.animTime);
+        for(var i = 0 ; i < $scope.linkCounts.length ; i ++){
+          if ($scope.linkCounts[i] >= $scope.day) {
+            $("circle."+i).show($scope.animTime);
+            $("text."+i).show($scope.animTime);
+            $("line."+i).each(function (index) {
+              if ($(this).attr("class").split(" ")[0] == i) {
+                $("line."+$(this).attr("class").split(" ")[0]+"."+$(this).attr("class").split(" ")[1]).show($scope.animTime);
+                $("text."+$(this).attr("class").split(" ")[1]).show($scope.animTime);
+                $("circle."+$(this).attr("class").split(" ")[1]).show($scope.animTime);
+              }
+            });
+          }
+        }
+      }
+
+      //draw function
+      function drawGraph(data) {
+        var x = [], y = [];
+        var bx0 = 200, by0 = 200, bx1 = 500, by1 = 500;
+
+        if (data.nodes.length > 0 & data.nodes.length <= 99) {
+          $scope.r = 10;
+        } if (data.nodes.length > 100 & data.nodes.length <= 999) {
+          $scope.r = 5;
+        } if (data.nodes.length > 1000 & data.nodes.length <= 9999) {
+          $scope.r = 3;
+        } if (data.nodes.length > 10000) {
+          $scope.r = 2;
+        }
+
+        var svg = d3.select(".graph")
+          .append("svg")
+          .datum(data)
+          .attr("width", width)
+          .attr("height", height);
+
+        //create total dragable g  
+        var dragG = svg.append("g")
+          .attr("transform", "translate(0, 0)")
+          .call(d3.drag()
+            .on("start", totalDragstarted)
+            .on("drag", totalDragged)
+            .on("end", totalDragended));
+
+        //define arrow
+        // svg.append("defs").append("marker")
+        //   .attr("id", "arrow")
+        //   .attr("viewBox", "0 -5 10 10")
+        //   .attr("refX", 50)
+        //   .attr("refY", 0)
+        //   .attr("markerWidth", 6)
+        //   .attr("markerHeight", 6)
+        //   .attr("orient", "auto")
+        //   .append("svg:path")
+        //   .attr("d", "M0, -4L15, 0L0, 4");
+
+        //define brush
+        // var brush = d3.brush()
+        //   .extent([[0, 0], [width, height]])
+        //   .on("end", brushmoved)
+        //   .on("start", brushstarted);
+
+        // var gBrush = dragG.append("g")
+        //   .attr("class", "brush")
+        //   .call(brush);
+
+        // var handle = gBrush.selectAll(".handle--custom")
+        //   .data([{type: "w"}, {type: "e"}])
+        //   .enter().append("path")
+        //     .attr("class", "handle--custom")
+        //     .attr("fill", "#666")
+        //     .attr("fill-opacity", 0.8)
+        //     .attr("stroke", "#000")
+        //     .attr("stroke-width", 1.5)
+        //     .attr("cursor", "ew-resize");
+
+        // gBrush.call(brush.move, [[bx0, by0], [bx1, by1]]);
+
+        //define zoom
+        var _zoom = d3.zoom()
+          .scaleExtent([1 / 32, 32])
+          .on("zoom", function() {
+            d3.select("g").attr("transform", d3.event.transform);
+          });
+        svg.call(_zoom);
+
+        //add line into g
+        var link = svg.selectAll("g").append("g")
+          .attr("class", "links")
+          .selectAll("line")
+          .data(data.links)
+          .enter().append("line")
+            .attr("class", function(d){return d.source + " " + d.target;})
+            .attr("stroke-width", 1)
+            .attr("stroke", "grey")
+            .attr("marker-end", "url(#arrow)");
+
+        //add node into g
+        var node = dragG.selectAll("g")
+          .data(data.nodes)
+          .enter().append("g")
+          .call(d3.drag()
+            .on("start", dragstarted)
+            .on("drag", dragged)
+            .on("end", dragended));
+
+        //add text to node
+        //var text = node.append("text");
+
+        //add circle to node
+        var circle = node.append("circle")
+          .attr("class", function(d) { return d.id; })
+          .attr("r", $scope.r)
+          .attr("fill", function(d) { return color(d.group); })
+          .on("mouseover", fade($scope.fadeOpacity))
+          .on("mouseout", fade(1));
+        //add title to circle
+        circle.append("title")
+          .text(function(d) { return d.group; });
+
+        //define mouse over function
+        var linkedByIndex = {};
+        data.links.forEach(function(d) {
+            linkedByIndex[d.source + "," + d.target] = 1;
+        });
+        function isConnected(a, b) {        
+          return linkedByIndex[a.id + "," + b.id] || linkedByIndex[b.id + "," + a.id] || a.id == b.id;
+        }
+        function fade(opacity) {
+          return function(d) {
+            if (!isInBrush(d.x, d.y) && $scope.enableBrush) {
+              return;
+            }
+            circle.style("stroke-opacity", function(o) {
+              if (!isInBrush(o.x, o.y) && $scope.enableBrush) {
+                return;
+              }
+              this.setAttribute('fill-opacity', isConnected(d, o) ? 1 : opacity);
+              this.setAttribute('r', isConnected(d, o) ? $scope.r + 5 : $scope.r);
+              this.setAttribute('stroke-width', isConnected(d, o) ? 5 : 0);
+              this.setAttribute('stroke', "black");
+              if (opacity == 1) {
+                this.setAttribute('r', $scope.r);
+                this.setAttribute('stroke-width', 0);
+              }
+              return opacity;        
+            });
+
+            this.setAttribute("stroke", "red");
+            this.setAttribute("stroke-width", $scope.r + 15);
+
+            if (opacity == 1) {
+              this.setAttribute("stroke-width", 0);
+            }
+
+            link.style("stroke-opacity", function(o) {
+              $("#arrow").css("opacity", 0.05);
+              return o.source === d || o.target === d ? 1 : opacity;
+            });
+
+            if (opacity == 1) {
+              $("#arrow").css("opacity", 1);
+              link.style("stroke-opacity", 1);
+            }
+          };
+        } 
+
+        //draw all
+        simulation.nodes(data.nodes)
+            .on("tick", ticked);
+        simulation.force("link")
+            .links(data.links);
+        function ticked() {
+          var flagX = false, flagY = false;
+          /*
+          text
+            .attr("class", function(d) { return d.id; })
+            .attr("x", function(d) { return d.x + 15; })
+            .attr("y", function(d) { return d.y; })
+            .attr("font-size", 12)
+            .text(function(d) { return d.id; });  
+          */
+          link
+            .attr("x1", function(d) { return d.source.x; })
+            .attr("y1", function(d) { return d.source.y; })
+            .attr("x2", function(d) { return d.target.x; })
+            .attr("y2", function(d) { return d.target.y; });
+
+          if ($scope.enableBrush) {
+            circle
+              .attr("cx", function(d) { return d.x; })
+              .attr("cy", function(d) { return d.y; })
+              .attr("fill-opacity", function(d) {
+                return isInBrush(d.x, d.y) ? 1 : $scope.brushOpacity ;
+              });            
+          } else {
+            circle
+              .attr("cx", function(d) { return d.x; })
+              .attr("cy", function(d) { return d.y; });              
+          }
+        }
+
+        //draggable functions for individual nodes
+        function dragstarted(d) {
+          if (!d3.event.active) simulation.alphaTarget(0.1).restart();
+          d.fx = d.x;
+          d.fy = d.y;
+        }
+        function dragged(d) {
+          d.fx = d3.event.x;
+          d.fy = d3.event.y;
+        }
+        function dragended(d) {
+          if (!d3.event.active) simulation.alphaTarget(0);
+        }
+
+        //draggable functions for total graph
+        function totalDragstarted(d) {
+          d3.select(this).raise().classed("active", true);
+        }
+        function totalDragged(d) {
+          d3.select(this).select("rect")
+            .attr("x", d.x = d3.event.x)
+            .attr("y", d.y = d3.event.y);
+        }
+        function totalDragended(d) {
+          d3.select(this).classed("active", false);
+        }
+
+        //zoom events when click zoom buttons
+        $(".zoom.in").on("click", function() {
+          _zoom.scaleBy(svg, 2);
+        });
+        $(".zoom.out").on("click", function() {
+          _zoom.scaleBy(svg, 0.5);
+        })
+
+        //brush handle function
+        function brushstarted() {
+          var s = d3.event.selection;
+          if (s == null) {
+            handle.attr("display", "none");
+          } else {
+            bx0 = s[0][0];
+            bx1 = s[1][0];
+            by0 = s[0][1];
+            by1 = s[1][1];
+            handle.attr("display", null).attr("transform", function(d, i) {
+              for(var i = 0 ; i < d3.selectAll("circle")._groups[0].length ; i ++){
+                var el = ((d3.selectAll("circle")._groups)[0])[i];
+                el.setAttribute("fill-opacity", $scope.brushOpacity);
+              } 
+            });
+          }
+        }
+        function brushmoved() {
+          var s = d3.event.selection;
+          if (s == null) {
+            handle.attr("display", "none");
+          } else {
+            handle.attr("display", null).attr("transform", function(d, i) {
+              bx0 = s[0][0];
+              bx1 = s[1][0];
+              by0 = s[0][1];
+              by1 = s[1][1];
+              for(var i = 0 ; i < d3.selectAll("circle")._groups[0].length ; i ++){
+                var el = ((d3.selectAll("circle")._groups)[0])[i];
+                if (isInBrush(el.cx.baseVal.value, el.cy.baseVal.value)) {
+                  el.setAttribute("fill-opacity", 1);
+                } else {
+                  el.setAttribute("fill-opacity", $scope.brushOpacity);
+                }
+              } 
+            });
+          }
+        }
+
+        function isInBrush(x, y){
+          if (x > bx0 && x < bx1 && y > by0 && y < by1) {
+            return true;
+          } else {
+            return false;
+          }
+        }
+      }
+
+      //function that get useful data from json data 
+      function getGraphData(data) {
+        for(var i = 0 ; i < data.results[0].data.length ; i ++)
+        {
+          if(data.results[0].data[i].graph)
+          {
+            for(var j = 0 ; j < 2 ; j ++)
+            {
+              var flag = false;
+              for(var k = 0 ; k < $scope.nodes.length ; k ++)
+              {
+                if ($scope.nodes[k].id == data.results[0].data[i].graph.nodes[j].id) {
+                  flag = true;
+                  break;
+                }
+              }
+              if (!flag) {
+                $scope.nodes.push({"id": data.results[0].data[i].graph.nodes[j].id, "group":data.results[0].data[i].graph.nodes[j].labels[0]});
+                $scope.pName.push({"id": data.results[0].data[i].graph.nodes[j].id, "pname": data.results[0].data[i].graph.nodes[j].labels[0]});
+              }
+            }
+            $scope.links.push({"source": data.results[0].data[i].graph.relationships[0].startNode, "target": data.results[0].data[i].graph.relationships[0].endNode, "value": data.results[0].data[i].graph.relationships[0].type});
+          }
+        }
+
+        //remove node that has no any child node
+        for(var i = 0 ; i < $scope.pName.length ; i ++){
+          var count = 0;
+          for(var j = 0 ; j < $scope.links.length ; j ++){
+            if ($scope.pName[i].id == $scope.links[j].source){
+              count ++;
+            }
+          }
+          $scope.linkCounts[$scope.pName[i].id] = count;
+        }
+        var pnameTemp = [];
+        for(var i = 0 ; i < $scope.pName.length ; i ++){
+          var flag = true;
+          for(var j = 0 ; j < $scope.linkCounts.length ; j ++){
+            if ($scope.linkCounts[j] == 0 && j == $scope.pName[i].id) {
+              flag = false;
+              break;
+            }
+          }
+          if (flag) {
+            pnameTemp.push($scope.pName[i]);
+          }
+        }
+
+        $scope.pName = [];
+        $scope.pName.push({"id": "All", "pname": "All"});
+        for(var i = 0 ; i < pnameTemp.length ; i ++){
+          $scope.pName.push(pnameTemp[i]);
+        }
+        $scope.nodes.push({"id": data.results[0].data[0].graph.nodes[0].id, "group":data.results[0].data[0].graph.nodes[0].labels[0]});
+        $scope.$apply();
+        return {"nodes": $scope.nodes, "links": $scope.links};
+      }
+    }
+  </script>
+</body>
+</html>

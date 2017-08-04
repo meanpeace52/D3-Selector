@@ -1,0 +1,26 @@
+[
+  {
+    "chnl": "voice",
+    "cCount": 84
+  },
+  {
+    "chnl": "widget",
+    "cCount": 4656
+  },
+  {
+    "chnl": "GMAIL",
+    "cCount": 941
+  },
+  {
+    "chnl": "web",
+    "cCount": 1412
+  },
+  {
+    "chnl": "Zendesk",
+    "cCount": 1471
+  },
+  {
+    "chnl": "test",
+    "cCount": 2834
+  }
+]
